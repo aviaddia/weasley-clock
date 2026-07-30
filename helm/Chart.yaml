@@ -1,0 +1,6 @@
+apiVersion: v2
+name: weasley-clock
+description: Weasley-style family location clock
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

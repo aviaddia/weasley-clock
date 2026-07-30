@@ -1,0 +1,66 @@
+# ── Global image settings ─────────────────────────────────────────
+imageRegistry: "your-ecr-account.dkr.ecr.eu-west-1.amazonaws.com"
+imageTag: "latest"
+imagePullPolicy: IfNotPresent
+
+# ── Backend ──────────────────────────────────────────────────────
+backend:
+  image: weasley-backend
+  replicaCount: 1
+  port: 3001
+
+  service:
+    type: ClusterIP
+    port: 3001
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+  # Persistent data volume (people.json + uploaded images)
+  persistence:
+    enabled: true
+    storageClass: "gp2"   # AWS EKS default; change for other providers
+    size: "1Gi"
+    mountPath: "/data"
+
+  # Environment variables – override with real values via CI secrets
+  env:
+    # Phone validation (NumVerify or similar)
+    PHONE_VALIDATION_API_URL: ""
+    PHONE_VALIDATION_API_KEY: ""
+    # Location triangulation
+    LOCATION_API_URL: ""
+    LOCATION_API_KEY: ""
+
+# ── Frontend ─────────────────────────────────────────────────────
+frontend:
+  image: weasley-frontend
+  replicaCount: 1
+  port: 80
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "128Mi"
+
+# ── Ingress ──────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: "nginx"        # or "alb" for AWS ALB Ingress Controller
+  host: "weasley.example.com"
+  tlsSecretName: "weasley-tls"
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
