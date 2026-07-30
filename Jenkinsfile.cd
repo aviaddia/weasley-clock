@@ -1,7 +1,7 @@
 pipeline {
   agent {
     kubernetes {
-      label 'weasley-cd'
+      cloud 'eks-k8s'
       defaultContainer 'helm'
       yaml '''
 apiVersion: v1

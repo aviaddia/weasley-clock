@@ -50,6 +50,9 @@ log "Applying in-cluster local registry resources"
 kubectl apply -f "${SCRIPT_DIR}/local-registry.yaml"
 kubectl -n registry rollout status deployment/local-registry --timeout=120s
 
+log "Applying Jenkins agent RBAC"
+kubectl apply -f "${SCRIPT_DIR}/jenkins-agent-rbac.yaml"
+
 log "Configuring EKS nodes to trust local registry (for CD image pulls)"
 kubectl apply -f "${SCRIPT_DIR}/enable-local-registry-on-nodes.yaml"
 kubectl -n kube-system rollout status daemonset/configure-local-registry --timeout=180s
@@ -59,7 +62,23 @@ curl -fsSL "${JENKINS_URL}/jnlpJars/jenkins-cli.jar" -o "${CLI_JAR}"
 jenkins_cli version
 
 log "Installing required Jenkins plugins (idempotent)"
-jenkins_cli install-plugin kubernetes git workflow-aggregator junit --restart || true
+jenkins_cli install-plugin \
+  kubernetes \
+  kubernetes-client-api \
+  kubernetes-credentials \
+  credentials \
+  plain-credentials \
+  ssh-credentials \
+  variant \
+  jackson2-api \
+  gson-api \
+  okhttp-api \
+  workflow-aggregator \
+  workflow-durable-task-step \
+  durable-task \
+  git \
+  junit \
+  --restart || true
 
 log "Waiting for Jenkins to restart"
 sleep 45
