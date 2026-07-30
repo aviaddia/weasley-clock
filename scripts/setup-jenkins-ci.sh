@@ -85,6 +85,9 @@ sleep 45
 curl -fsSL "${JENKINS_URL}/jnlpJars/jenkins-cli.jar" -o "${CLI_JAR}"
 jenkins_cli version
 
+log "Installed plugin snapshot"
+jenkins_cli list-plugins | grep -E '^(kubernetes|kubernetes-client-api|kubernetes-credentials|workflow-durable-task-step|durable-task|git|junit)\b' || true
+
 log "Configuring Kubernetes cloud in Jenkins"
 jenkins_cli groovy = <<GROOVY
 import jenkins.model.Jenkins

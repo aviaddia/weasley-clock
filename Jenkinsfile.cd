@@ -1,7 +1,6 @@
 pipeline {
   agent {
     kubernetes {
-      cloud 'eks-k8s'
       defaultContainer 'helm'
       yaml '''
 apiVersion: v1
@@ -11,6 +10,10 @@ metadata:
     app: weasley-cd-agent
 spec:
   serviceAccountName: jenkins
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
   containers:
     - name: helm
       image: alpine/helm:3.16.1

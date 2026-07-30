@@ -1,8 +1,7 @@
 pipeline {
   agent {
     kubernetes {
-      cloud 'eks-k8s'
-      defaultContainer 'docker'
+      defaultContainer 'node'
       yaml '''
 apiVersion: v1
 kind: Pod
@@ -12,26 +11,12 @@ metadata:
 spec:
   serviceAccountName: jenkins
   containers:
-    - name: docker
-      image: docker:27.1.2-cli
-      command: ['cat']
-      tty: true
-      env:
-        - name: DOCKER_HOST
-          value: tcp://localhost:2375
-    - name: dind
-      image: docker:27.1.2-dind
-      securityContext:
-        privileged: true
-      args:
-        - --host=tcp://0.0.0.0:2375
-        - --tls=false
-        - --insecure-registry=local-registry.registry.svc.cluster.local:5000
-      env:
-        - name: DOCKER_TLS_CERTDIR
-          value: ""
     - name: node
       image: node:20-alpine
+      command: ['cat']
+      tty: true
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:v1.23.2-debug
       command: ['cat']
       tty: true
 '''
@@ -94,7 +79,7 @@ spec:
 
     stage('Build And Push To Local Registry') {
       steps {
-        container('docker') {
+        container('kaniko') {
           sh '''
             set -eu
 
@@ -104,13 +89,21 @@ spec:
             BACKEND_IMAGE="${REGISTRY}/weasley-backend:${TAG}"
             FRONTEND_IMAGE="${REGISTRY}/weasley-frontend:${TAG}"
 
-            docker version
+            /kaniko/executor \
+              --context "$WORKSPACE/backend" \
+              --dockerfile "$WORKSPACE/backend/Dockerfile" \
+              --destination "${BACKEND_IMAGE}" \
+              --insecure \
+              --skip-tls-verify \
+              --insecure-pull
 
-            docker build -t "${BACKEND_IMAGE}" backend/
-            docker build -t "${FRONTEND_IMAGE}" frontend/
-
-            docker push "${BACKEND_IMAGE}"
-            docker push "${FRONTEND_IMAGE}"
+            /kaniko/executor \
+              --context "$WORKSPACE/frontend" \
+              --dockerfile "$WORKSPACE/frontend/Dockerfile" \
+              --destination "${FRONTEND_IMAGE}" \
+              --insecure \
+              --skip-tls-verify \
+              --insecure-pull
 
             mkdir -p image-artifacts
             echo "${BACKEND_IMAGE}" > image-artifacts/backend-image.txt

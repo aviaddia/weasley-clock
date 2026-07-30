@@ -42,6 +42,31 @@ jenkins_cli version
 log "Current plugin versions (before)"
 jenkins_cli list-plugins | grep -E '^(kubernetes|kubernetes-client-api|kubernetes-credentials|git|workflow-aggregator|workflow-durable-task-step|durable-task|junit)\b' || true
 
+log "Removing plugin pinning for Kubernetes stack (if present)"
+jenkins_cli groovy = <<'GROOVY'
+import jenkins.model.Jenkins
+
+def root = Jenkins.get().rootDir
+def pluginIds = [
+  'kubernetes',
+  'kubernetes-client-api',
+  'kubernetes-credentials',
+  'durable-task',
+  'workflow-durable-task-step'
+]
+
+pluginIds.each { id ->
+  def pinned = new File(root, "plugins/${id}.jpi.pinned")
+  if (pinned.exists()) {
+    if (pinned.delete()) {
+      println("Removed pin: ${pinned}")
+    } else {
+      println("Could not remove pin: ${pinned}")
+    }
+  }
+}
+GROOVY
+
 log "Upgrading Kubernetes plugin bundle in one transaction"
 jenkins_cli install-plugin \
   kubernetes \
@@ -74,6 +99,21 @@ jenkins_cli version
 
 log "Plugin versions (after)"
 jenkins_cli list-plugins | grep -E '^(kubernetes|kubernetes-client-api|kubernetes-credentials|git|workflow-aggregator|workflow-durable-task-step|durable-task|junit)\b' || true
+
+log "Active plugin details from Jenkins plugin manager"
+jenkins_cli groovy = <<'GROOVY'
+import jenkins.model.Jenkins
+
+def pm = Jenkins.get().pluginManager
+['kubernetes','kubernetes-client-api','kubernetes-credentials','durable-task','workflow-durable-task-step'].each { id ->
+  def p = pm.getPlugin(id)
+  if (p == null) {
+    println("${id}: NOT INSTALLED")
+  } else {
+    println("${id}: version=${p.version} active=${p.active} enabled=${p.enabled}")
+  }
+}
+GROOVY
 
 cat <<OUT
 
