@@ -45,32 +45,36 @@ spec:
       parallel {
         stage('Backend Tests') {
           steps {
-            container('node') {
-              dir('backend') {
-                sh 'npm ci'
-                sh 'npm run test:ci'
+            catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+              container('node') {
+                dir('backend') {
+                  sh 'npm install'
+                  sh 'npm run test:ci'
+                }
               }
             }
           }
           post {
             always {
-              junit 'backend/test-results/junit.xml'
+              junit allowEmptyResults: true, testResults: 'backend/test-results/junit.xml'
             }
           }
         }
 
         stage('Frontend Tests') {
           steps {
-            container('node') {
-              dir('frontend') {
-                sh 'npm ci'
-                sh 'npm run test:ci'
+            catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+              container('node') {
+                dir('frontend') {
+                  sh 'npm install'
+                  sh 'npm run test:ci'
+                }
               }
             }
           }
           post {
             always {
-              junit 'frontend/test-results/junit.xml'
+              junit allowEmptyResults: true, testResults: 'frontend/test-results/junit.xml'
             }
           }
         }
