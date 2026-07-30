@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: configure-local-registry
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: configure-local-registry
+  template:
+    metadata:
+      labels:
+        app: configure-local-registry
+    spec:
+      hostPID: true
+      tolerations:
+        - operator: Exists
+      initContainers:
+        - name: configure
+          image: alpine:3.20
+          securityContext:
+            privileged: true
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              REGISTRY_ADDR="local-registry.registry.svc.cluster.local:5000"
+              CERTS_DIR="/host/etc/containerd/certs.d/${REGISTRY_ADDR}"
+              mkdir -p "${CERTS_DIR}"
+              cat > "${CERTS_DIR}/hosts.toml" <<'EOF'
+              server = "http://local-registry.registry.svc.cluster.local:5000"
+
+              [host."http://local-registry.registry.svc.cluster.local:5000"]
+                capabilities = ["pull", "resolve", "push"]
+                skip_verify = true
+              EOF
+              nsenter --mount=/proc/1/ns/mnt -- systemctl restart containerd || true
+          volumeMounts:
+            - name: host-etc
+              mountPath: /host/etc
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+      volumes:
+        - name: host-etc
+          hostPath:
+            path: /etc

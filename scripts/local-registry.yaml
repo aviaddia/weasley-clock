@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: registry
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: local-registry-pvc
+  namespace: registry
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp2
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: local-registry
+  namespace: registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: local-registry
+  template:
+    metadata:
+      labels:
+        app: local-registry
+    spec:
+      containers:
+        - name: registry
+          image: registry:2
+          ports:
+            - containerPort: 5000
+          env:
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
+          volumeMounts:
+            - name: registry-data
+              mountPath: /var/lib/registry
+      volumes:
+        - name: registry-data
+          persistentVolumeClaim:
+            claimName: local-registry-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-registry
+  namespace: registry
+spec:
+  selector:
+    app: local-registry
+  ports:
+    - name: http
+      port: 5000
+      targetPort: 5000
+      protocol: TCP
