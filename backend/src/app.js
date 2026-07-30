@@ -18,5 +18,10 @@ app.use('/api/locations', require('./routes/locations'));
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Weasley Clock backend running on port ${PORT}`));
+// Only start listening when run directly (not when required by tests)
+if (require.main === module) {
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, () => console.log(`Weasley Clock backend running on port ${PORT}`));
+}
+
+module.exports = app;
