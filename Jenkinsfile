@@ -134,12 +134,12 @@ pipeline {
         }
 
         /*
-         * One agent allocation is retained for all source-code CI stages.
-         * Required on exec_node_1: Git, Python 3.11+ and venv.
+         * Run source-code CI on a Kubernetes dynamic agent template.
+         * Required on workshop-agent-small: Git, Python 3.11+ and venv.
          */
         stage('Python CI') {
             agent {
-                label 'exec_node_1'
+                label 'workshop-agent-small'
             }
 
             stages {
@@ -291,13 +291,14 @@ set -o pipefail
         }
 
         /*
-         * Required on exec_node_2: Docker CLI and access to a Docker daemon.
+         * Run container CI on a Kubernetes dynamic agent template.
+         * Required on workshop-agent-large: Docker CLI and access to a Docker daemon.
          * Hadolint runs as a container, so it does not need to be installed
          * directly on the Jenkins agent.
          */
         stage('Container CI') {
             agent {
-                label 'exec_node_2'
+                label 'workshop-agent-large'
             }
 
             stages {
