@@ -15,11 +15,10 @@ pipeline {
     }
 
     parameters {
-        // The Jenkinsfile is stored in aviaddia/jenkins-workshop on master,
-        // while this parameter selects the application source repository.
+        // Select the application source repository that this CI build clones.
         string(
             name: 'REPO_URL',
-            defaultValue: 'https://github.com/codeby-Vishwajeet/python-fastapi-boilerplate.git',
+            defaultValue: 'https://github.com/aviaddia/weasley-clock.git',
             description: 'Python application repository to build'
         )
 
@@ -154,7 +153,7 @@ pipeline {
                         script {
                             def applicationRepository =
                                 params.REPO_URL?.trim() ?:
-                                'https://github.com/codeby-Vishwajeet/python-fastapi-boilerplate.git'
+                                'https://github.com/aviaddia/weasley-clock.git'
 
                             def applicationBranch =
                                 params.REPO_URL?.trim() ?
@@ -181,7 +180,8 @@ pipeline {
 
                         /*
                          * Stash before creating .venv and reports so only
-                         * repository source is transferred to exec_node_2.
+                         * repository source is transferred to the container-CI
+                         * dynamic agent stage.
                          */
                         stash(
                             name: 'application-source',
