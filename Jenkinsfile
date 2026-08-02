@@ -6,8 +6,6 @@ pipeline {
     options {
         // The pipeline performs an explicit checkout on exec_node_1.
         skipDefaultCheckout(true)
-        // Add a timestamp to every console-log line.
-        timestamps()
         // Prevent two builds from using the same Docker resources concurrently.
         disableConcurrentBuilds()
         // Keep the most recent 30 builds and discard older build history.
