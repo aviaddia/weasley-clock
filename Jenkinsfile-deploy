@@ -1,0 +1,149 @@
+pipeline {
+    agent { label 'eks-deployer' }
+
+    options {
+        disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        skipDefaultCheckout(true)
+    }
+
+    parameters {
+        string(
+            name: 'AWS_REGION',
+            defaultValue: 'il-central-1',
+            description: 'AWS region containing the EKS cluster'
+        )
+        string(
+            name: 'EKS_CLUSTER_NAME',
+            defaultValue: 'jenkins-workshop',
+            description: 'EKS cluster name'
+        )
+        string(
+            name: 'K8S_NAMESPACE',
+            defaultValue: 'production',
+            description: 'Kubernetes namespace for the deployment'
+        )
+        string(
+            name: 'IMAGE_REGISTRY',
+            defaultValue: 'local-registry.registry.svc.cluster.local:5000',
+            description: 'Docker registry that holds the built images'
+        )
+        string(
+            name: 'IMAGE_TAG',
+            defaultValue: 'latest',
+            description: 'Image tag to deploy'
+        )
+        string(
+            name: 'RELEASE_NAME',
+            defaultValue: 'weasley-clock',
+            description: 'Helm release name'
+        )
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                deleteDir()
+                git url: 'https://github.com/aviaddia/weasley-clock.git', branch: 'main'
+            }
+        }
+
+        stage('Configure kubectl') {
+            steps {
+                sh """#!/usr/bin/env bash
+set -euo pipefail
+export AWS_PAGER=""
+
+aws eks update-kubeconfig \
+  --region ${params.AWS_REGION} \
+  --name ${params.EKS_CLUSTER_NAME} \
+  --kubeconfig \$WORKSPACE/.kube/config
+
+export KUBECONFIG=\$WORKSPACE/.kube/config
+kubectl cluster-info
+"""
+            }
+        }
+
+        stage('Create Namespace') {
+            steps {
+                sh """#!/usr/bin/env bash
+set -euo pipefail
+export KUBECONFIG=\$WORKSPACE/.kube/config
+
+kubectl create namespace ${params.K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+"""
+            }
+        }
+
+        stage('Deploy with Helm') {
+            steps {
+                sh """#!/usr/bin/env bash
+set -euo pipefail
+export KUBECONFIG=\$WORKSPACE/.kube/config
+
+helm upgrade --install ${params.RELEASE_NAME} ./helm \
+  --namespace ${params.K8S_NAMESPACE} \
+  --set imageRegistry=${params.IMAGE_REGISTRY} \
+  --set imageTag=${params.IMAGE_TAG} \
+  --set backend.image=weasley-clock-backend \
+  --set frontend.image=weasley-clock-frontend \
+  --set frontend.service.type=LoadBalancer \
+  --set ingress.enabled=false \
+  --set imagePullPolicy=Always \
+  --wait \
+  --timeout 5m
+
+echo "Helm release status:"
+helm status ${params.RELEASE_NAME} --namespace ${params.K8S_NAMESPACE}
+"""
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh """#!/usr/bin/env bash
+set -euo pipefail
+export KUBECONFIG=\$WORKSPACE/.kube/config
+NS="${params.K8S_NAMESPACE}"
+
+echo "=== Pods ==="
+kubectl get pods -n \$NS -l app.kubernetes.io/instance=${params.RELEASE_NAME}
+
+echo "=== Services ==="
+kubectl get svc -n \$NS -l app.kubernetes.io/instance=${params.RELEASE_NAME}
+
+echo "=== Waiting for frontend LoadBalancer address ==="
+for i in \$(seq 1 30); do
+  LB=\$(kubectl get svc ${params.RELEASE_NAME}-frontend -n \$NS \
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+  if [ -n "\$LB" ]; then
+    echo "Frontend accessible at: http://\$LB"
+    break
+  fi
+  echo "Waiting for LoadBalancer... (\$i/30)"
+  sleep 10
+done
+
+if [ -z "\${LB:-}" ]; then
+  echo "WARNING: LoadBalancer address not yet available. Check 'kubectl get svc -n \$NS' later."
+fi
+
+echo "=== Rollout status ==="
+kubectl rollout status deployment/${params.RELEASE_NAME}-backend  -n \$NS --timeout=120s
+kubectl rollout status deployment/${params.RELEASE_NAME}-frontend -n \$NS --timeout=120s
+"""
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deployment of weasley-clock completed successfully."
+        }
+        unsuccessful {
+            echo "Deployment failed. Check the stage output for details."
+        }
+    }
+}

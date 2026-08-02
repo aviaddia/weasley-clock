@@ -31,7 +31,7 @@ pipeline {
         )
         string(
             name: 'CD_JOB_NAME',
-            defaultValue: 'weasley-clock-cd',
+            defaultValue: 'weasley-clock-deploy',
             description: 'Downstream CD job name'
         )
     }
@@ -196,14 +196,13 @@ echo "Pushed images to \$REGISTRY"
             }
             steps {
                 script {
-                    def registry = params.LOCAL_REGISTRY
                     build(
                         job: params.CD_JOB_NAME,
                         wait: true,
                         propagate: true,
                         parameters: [
-                            booleanParam(name: 'USE_LOCAL_REGISTRY_LATEST', value: true),
-                            string(name: 'APP_NAME', value: 'weasley-clock'),
+                            string(name: 'IMAGE_REGISTRY', value: params.LOCAL_REGISTRY),
+                            string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}"),
                             string(name: 'K8S_NAMESPACE', value: 'production'),
                             string(name: 'AWS_REGION', value: 'il-central-1'),
                             string(name: 'EKS_CLUSTER_NAME', value: 'jenkins-workshop')
