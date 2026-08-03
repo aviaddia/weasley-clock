@@ -148,20 +148,21 @@ kind: Pod
 spec:
   serviceAccountName: jenkins
   containers:
-    - name: kaniko
-      image: gcr.io/kaniko-project/executor:v1.23.2-debug
-      command:
-                - /busybox/sh
-                - -c
-                - sleep 7d
-      tty: true
-      resources:
-        requests:
-          cpu: "500m"
-          memory: "1Gi"
-        limits:
-          cpu: "2000m"
-          memory: "4Gi"
+        - name: kaniko
+            image: gcr.io/kaniko-project/executor:v1.23.2-debug
+            command:
+                - /busybox/tail
+            args:
+                - "-f"
+                - "/dev/null"
+            tty: true
+            resources:
+                requests:
+                    cpu: "500m"
+                    memory: "1Gi"
+                limits:
+                    cpu: "2000m"
+                    memory: "4Gi"
 '''
                 }
             }
@@ -171,6 +172,8 @@ spec:
                 container('kaniko') {
                     sh """#!/busybox/sh
 set -eu
+
+echo "Kaniko PID1: \$(tr '\\0' ' ' </proc/1/cmdline)"
 
 echo Building backend image with Kaniko
 /kaniko/executor \
