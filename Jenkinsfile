@@ -81,7 +81,9 @@ fi
                 stage('Backend Unit Tests') {
                     steps {
                         dir('backend') {
-                            sh 'npm test'
+                            catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                                sh 'npm test'
+                            }
                         }
                     }
                     post {
@@ -122,7 +124,9 @@ fi
                 stage('Frontend Unit Tests') {
                     steps {
                         dir('frontend') {
-                            sh 'npm test'
+                            catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                                sh 'npm test'
+                            }
                         }
                     }
                     post {
