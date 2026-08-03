@@ -60,7 +60,7 @@ pipeline {
 set -euo pipefail
 export AWS_PAGER=""
 
-if [ "${params.USE_IN_CLUSTER_AUTH}" = "true" ]; then
+if [ "${params.USE_IN_CLUSTER_AUTH ?: true}" = "true" ]; then
     echo "Using in-cluster Kubernetes service account authentication."
     kubectl cluster-info
     exit 0
