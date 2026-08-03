@@ -21,7 +21,7 @@ pipeline {
         )
         string(
             name: 'LOCAL_REGISTRY',
-            defaultValue: 'local-registry.registry.svc.cluster.local:5000',
+            defaultValue: '10.100.55.169:5000',
             description: 'Local Docker registry address'
         )
         booleanParam(
