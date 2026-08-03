@@ -151,7 +151,9 @@ spec:
     - name: kaniko
       image: gcr.io/kaniko-project/executor:v1.23.2-debug
       command:
-        - /busybox/cat
+                - /busybox/sh
+                - -c
+                - sleep 7d
       tty: true
       resources:
         requests:
