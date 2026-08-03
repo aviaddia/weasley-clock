@@ -99,6 +99,7 @@ helm upgrade --install ${params.RELEASE_NAME} ./helm \
   --set imageRegistry=${params.IMAGE_REGISTRY} \
   --set imageTag=${params.IMAGE_TAG} \
   --set backend.image=weasley-clock-backend \
+    --set backend.persistence.enabled=false \
   --set frontend.image=weasley-clock-frontend \
   --set frontend.service.type=LoadBalancer \
   --set ingress.enabled=false \
