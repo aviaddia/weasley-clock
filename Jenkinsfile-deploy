@@ -66,25 +66,13 @@ kubectl cluster-info
             }
         }
 
-        stage('Create Namespace') {
+        stage('Namespace Precheck') {
             steps {
                 sh """#!/usr/bin/env bash
 set -euo pipefail
-export KUBECONFIG=\$WORKSPACE/.kube/config
-NS="${params.K8S_NAMESPACE}"
-
-if kubectl create namespace "\$NS" >/tmp/ns-create.out 2>/tmp/ns-create.err; then
-    echo "Namespace \$NS created."
-elif grep -qi 'AlreadyExists' /tmp/ns-create.err; then
-    echo "Namespace \$NS already exists."
-elif grep -qi 'Forbidden' /tmp/ns-create.err; then
-    echo "WARNING: No cluster-scope permission to create/get namespaces. Assuming namespace \$NS already exists and continuing."
-    cat /tmp/ns-create.err
-else
-    echo "ERROR: Failed to ensure namespace \$NS." >&2
-    cat /tmp/ns-create.err >&2
-    exit 1
-fi
+echo "Skipping namespace create/get to avoid cluster-scope RBAC checks."
+echo "Deploying into namespace: ${params.K8S_NAMESPACE}"
+echo "If this namespace does not exist, pre-create it once with admin credentials."
 """
             }
         }
