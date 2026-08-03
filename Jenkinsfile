@@ -139,7 +139,30 @@ fi
         }
 
         stage('Build & Push Docker Images') {
-            agent { label 'workshop-agent-large' }
+            agent {
+                kubernetes {
+                    defaultContainer 'kaniko'
+                    yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins
+  containers:
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:v1.23.2-debug
+      command:
+        - /busybox/cat
+      tty: true
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2000m"
+          memory: "4Gi"
+'''
+                }
+            }
             stages {
                 stage('Prepare') {
                     steps {
@@ -149,60 +172,37 @@ fi
                 }
                 stage('Build Backend Image') {
                     steps {
-                        dir('backend') {
-                            sh """
-                                docker build \
-                                  --tag ${env.BACKEND_IMAGE}:${BUILD_NUMBER} \
-                                  --tag ${env.BACKEND_IMAGE}:latest \
-                                  .
-                            """
+                        container('kaniko') {
+                            sh """#!/busybox/sh
+set -eu
+/kaniko/executor \
+  --context \"${WORKSPACE}/backend\" \
+  --dockerfile \"${WORKSPACE}/backend/Dockerfile\" \
+  --destination \"${params.LOCAL_REGISTRY}/${env.BACKEND_IMAGE}:${BUILD_NUMBER}\" \
+  --destination \"${params.LOCAL_REGISTRY}/${env.BACKEND_IMAGE}:latest\" \
+  --insecure \
+  --skip-tls-verify \
+  --insecure-pull
+"""
                         }
                     }
                 }
                 stage('Build Frontend Image') {
                     steps {
-                        dir('frontend') {
-                            sh """
-                                docker build \
-                                  --tag ${env.FRONTEND_IMAGE}:${BUILD_NUMBER} \
-                                  --tag ${env.FRONTEND_IMAGE}:latest \
-                                  .
-                            """
+                        container('kaniko') {
+                            sh """#!/busybox/sh
+set -eu
+/kaniko/executor \
+  --context \"${WORKSPACE}/frontend\" \
+  --dockerfile \"${WORKSPACE}/frontend/Dockerfile\" \
+  --destination \"${params.LOCAL_REGISTRY}/${env.FRONTEND_IMAGE}:${BUILD_NUMBER}\" \
+  --destination \"${params.LOCAL_REGISTRY}/${env.FRONTEND_IMAGE}:latest\" \
+  --insecure \
+  --skip-tls-verify \
+  --insecure-pull
+"""
                         }
                     }
-                }
-                stage('Push to Local Registry') {
-                    steps {
-                        sh """#!/usr/bin/env bash
-set -euo pipefail
-
-REGISTRY="${params.LOCAL_REGISTRY}"
-
-# Tag and push backend
-docker tag ${env.BACKEND_IMAGE}:${BUILD_NUMBER} \$REGISTRY/${env.BACKEND_IMAGE}:${BUILD_NUMBER}
-docker tag ${env.BACKEND_IMAGE}:latest \$REGISTRY/${env.BACKEND_IMAGE}:latest
-docker push \$REGISTRY/${env.BACKEND_IMAGE}:${BUILD_NUMBER}
-docker push \$REGISTRY/${env.BACKEND_IMAGE}:latest
-
-# Tag and push frontend
-docker tag ${env.FRONTEND_IMAGE}:${BUILD_NUMBER} \$REGISTRY/${env.FRONTEND_IMAGE}:${BUILD_NUMBER}
-docker tag ${env.FRONTEND_IMAGE}:latest \$REGISTRY/${env.FRONTEND_IMAGE}:latest
-docker push \$REGISTRY/${env.FRONTEND_IMAGE}:${BUILD_NUMBER}
-docker push \$REGISTRY/${env.FRONTEND_IMAGE}:latest
-
-echo "Pushed images to \$REGISTRY"
-"""
-                    }
-                }
-            }
-            post {
-                always {
-                    sh """
-                        docker image rm -f ${env.BACKEND_IMAGE}:${BUILD_NUMBER} || true
-                        docker image rm -f ${env.BACKEND_IMAGE}:latest || true
-                        docker image rm -f ${env.FRONTEND_IMAGE}:${BUILD_NUMBER} || true
-                        docker image rm -f ${env.FRONTEND_IMAGE}:latest || true
-                    """
                 }
             }
         }
