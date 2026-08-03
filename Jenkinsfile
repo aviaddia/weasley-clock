@@ -165,18 +165,14 @@ spec:
 '''
                 }
             }
-            stages {
-                stage('Prepare') {
-                    steps {
-                        deleteDir()
-                        unstash 'source'
-                    }
-                }
-                stage('Build Backend Image') {
-                    steps {
-                        container('kaniko') {
-                            sh """#!/busybox/sh
+            steps {
+                deleteDir()
+                unstash 'source'
+                container('kaniko') {
+                    sh """#!/busybox/sh
 set -eu
+
+echo Building backend image with Kaniko
 /kaniko/executor \
   --context \"${WORKSPACE}/backend\" \
   --dockerfile \"${WORKSPACE}/backend/Dockerfile\" \
@@ -185,15 +181,8 @@ set -eu
   --insecure \
   --skip-tls-verify \
   --insecure-pull
-"""
-                        }
-                    }
-                }
-                stage('Build Frontend Image') {
-                    steps {
-                        container('kaniko') {
-                            sh """#!/busybox/sh
-set -eu
+
+echo Building frontend image with Kaniko
 /kaniko/executor \
   --context \"${WORKSPACE}/frontend\" \
   --dockerfile \"${WORKSPACE}/frontend/Dockerfile\" \
@@ -203,8 +192,6 @@ set -eu
   --skip-tls-verify \
   --insecure-pull
 """
-                        }
-                    }
                 }
             }
         }
