@@ -142,27 +142,27 @@ fi
             agent {
                 kubernetes {
                     defaultContainer 'kaniko'
-                    yaml '''
-apiVersion: v1
-kind: Pod
-spec:
-  serviceAccountName: jenkins
-  containers:
-        - name: kaniko
-            image: gcr.io/kaniko-project/executor:v1.23.2-debug
-            command:
-                - /busybox/tail
-            args:
-                - "-f"
-                - "/dev/null"
-            tty: true
-            resources:
-                requests:
-                    cpu: "500m"
-                    memory: "1Gi"
-                limits:
-                    cpu: "2000m"
-                    memory: "4Gi"
+                                        yaml '''
+{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "spec": {
+        "serviceAccountName": "jenkins",
+        "containers": [
+            {
+                "name": "kaniko",
+                "image": "gcr.io/kaniko-project/executor:v1.23.2-debug",
+                "command": ["/busybox/tail"],
+                "args": ["-f", "/dev/null"],
+                "tty": true,
+                "resources": {
+                    "requests": { "cpu": "500m", "memory": "1Gi" },
+                    "limits": { "cpu": "2000m", "memory": "4Gi" }
+                }
+            }
+        ]
+    }
+}
 '''
                 }
             }
