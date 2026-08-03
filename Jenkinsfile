@@ -60,7 +60,14 @@ pipeline {
                         deleteDir()
                         unstash 'source'
                         dir('backend') {
-                            sh 'npm ci'
+                            sh '''#!/usr/bin/env bash
+set -euo pipefail
+if [ -f package-lock.json ]; then
+    npm ci
+else
+    npm install
+fi
+'''
                         }
                     }
                 }
@@ -94,7 +101,14 @@ pipeline {
                         deleteDir()
                         unstash 'source'
                         dir('frontend') {
-                            sh 'npm ci'
+                            sh '''#!/usr/bin/env bash
+set -euo pipefail
+if [ -f package-lock.json ]; then
+    npm ci
+else
+    npm install
+fi
+'''
                         }
                     }
                 }
