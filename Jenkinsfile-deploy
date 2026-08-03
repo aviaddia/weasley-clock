@@ -39,6 +39,11 @@ pipeline {
             defaultValue: 'weasley-clock',
             description: 'Helm release name'
         )
+        booleanParam(
+            name: 'USE_IN_CLUSTER_AUTH',
+            defaultValue: true,
+            description: 'Use Kubernetes service account auth from the deploy pod instead of aws eks update-kubeconfig.'
+        )
     }
 
     stages {
@@ -54,6 +59,12 @@ pipeline {
                 sh """#!/usr/bin/env bash
 set -euo pipefail
 export AWS_PAGER=""
+
+if [ "${params.USE_IN_CLUSTER_AUTH}" = "true" ]; then
+    echo "Using in-cluster Kubernetes service account authentication."
+    kubectl cluster-info
+    exit 0
+fi
 
 aws eks update-kubeconfig \
   --region ${params.AWS_REGION} \
