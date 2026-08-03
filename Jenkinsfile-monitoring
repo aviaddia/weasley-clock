@@ -1,0 +1,177 @@
+pipeline {
+    agent any
+
+    options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    parameters {
+        string(
+            name: 'AWS_REGION',
+            defaultValue: 'il-central-1',
+            description: 'AWS region where the EKS cluster lives'
+        )
+        string(
+            name: 'CLUSTER_NAME',
+            defaultValue: 'jenkins-workshop',
+            description: 'EKS cluster name'
+        )
+        string(
+            name: 'MONITORING_NAMESPACE',
+            defaultValue: 'monitoring',
+            description: 'Kubernetes namespace to deploy into'
+        )
+        string(
+            name: 'RELEASE_NAME',
+            defaultValue: 'kube-prometheus-stack',
+            description: 'Helm release name'
+        )
+        string(
+            name: 'CHART_VERSION',
+            defaultValue: '70.4.2',
+            description: 'kube-prometheus-stack chart version'
+        )
+        booleanParam(
+            name: 'APPLY_JENKINS_SERVICEMONITOR',
+            defaultValue: true,
+            description: 'Apply the Jenkins ServiceMonitor after deploying the stack'
+        )
+    }
+
+    environment {
+        KUBECONFIG = "${WORKSPACE}/.kube/config"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Configure kubectl for EKS') {
+            steps {
+                sh '''
+                    mkdir -p "$(dirname "$KUBECONFIG")"
+
+                    echo "Fetching EKS cluster: ${CLUSTER_NAME} in ${AWS_REGION}"
+                    aws eks update-kubeconfig \
+                        --region  "${AWS_REGION}" \
+                        --name    "${CLUSTER_NAME}" \
+                        --kubeconfig "${KUBECONFIG}"
+
+                    echo "--- Cluster info ---"
+                    kubectl cluster-info
+                    kubectl get nodes
+                '''
+            }
+        }
+
+        stage('Add Helm repo') {
+            steps {
+                sh '''
+                    helm repo add prometheus-community \
+                        https://prometheus-community.github.io/helm-charts 2>/dev/null || true
+                    helm repo update
+                '''
+            }
+        }
+
+        stage('Create namespace') {
+            steps {
+                sh '''
+                    kubectl create namespace "${MONITORING_NAMESPACE}" \
+                        --dry-run=client -o yaml | kubectl apply -f -
+                '''
+            }
+        }
+
+        stage('Deploy Prometheus & Grafana') {
+            steps {
+                sh '''
+                    helm upgrade --install "${RELEASE_NAME}" \
+                        prometheus-community/kube-prometheus-stack \
+                        --namespace    "${MONITORING_NAMESPACE}" \
+                        --version      "${CHART_VERSION}" \
+                        --values       jenkins-workshop/monitoring/prometheus-values.yaml \
+                        --wait \
+                        --timeout 15m
+                '''
+            }
+        }
+
+        stage('Apply Jenkins ServiceMonitor') {
+            when {
+                expression { params.APPLY_JENKINS_SERVICEMONITOR }
+            }
+            steps {
+                sh '''
+                    kubectl apply -f jenkins-workshop/monitoring/jenkins-servicemonitor.yaml
+                '''
+            }
+        }
+
+        stage('Verify deployment') {
+            steps {
+                sh '''
+                    echo "--- Pods in ${MONITORING_NAMESPACE} ---"
+                    kubectl get pods -n "${MONITORING_NAMESPACE}" -o wide
+
+                    echo ""
+                    echo "--- Services in ${MONITORING_NAMESPACE} ---"
+                    kubectl get svc  -n "${MONITORING_NAMESPACE}"
+                '''
+            }
+        }
+
+        stage('Print Grafana URL') {
+            steps {
+                script {
+                    def grafanaHost = ''
+                    def maxRetries = 24   // 24 × 10 s = 4 min
+                    for (int i = 1; i <= maxRetries; i++) {
+                        grafanaHost = sh(
+                            script: """
+                                kubectl get svc -n "${params.MONITORING_NAMESPACE}" \
+                                    "${params.RELEASE_NAME}-grafana" \
+                                    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' \
+                                    2>/dev/null || true
+                            """,
+                            returnStdout: true
+                        ).trim()
+
+                        if (grafanaHost) break
+                        echo "Waiting for Grafana LoadBalancer… (${i}/${maxRetries})"
+                        sleep(10)
+                    }
+
+                    echo """
+============================================================
+ Monitoring stack deployed successfully!
+
+ Grafana URL : http://${grafanaHost ?: '<pending — check kubectl get svc>'}
+ Username    : admin
+ Password    : run → kubectl get secret -n ${params.MONITORING_NAMESPACE} \\
+                       ${params.RELEASE_NAME}-grafana \\
+                       -o jsonpath='{.data.admin-password}' | base64 -d
+============================================================
+"""
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo 'Deployment failed. Check the logs above for details.'
+            sh 'kubectl get events -n "${MONITORING_NAMESPACE}" --sort-by=.lastTimestamp | tail -30 || true'
+        }
+        always {
+            // Remove the ephemeral kubeconfig so credentials are not left on disk.
+            sh 'rm -f "${KUBECONFIG}" || true'
+        }
+    }
+}
