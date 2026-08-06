@@ -187,7 +187,7 @@ esac
                                         sh '''#!/busybox/sh
 set -eu
 
-echo "Kaniko PID1: $(tr '\0' ' ' </proc/1/cmdline)"
+echo "Kaniko container is ready"
 
 echo Building backend image with Kaniko
 /kaniko/executor \
