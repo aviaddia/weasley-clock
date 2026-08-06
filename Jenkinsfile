@@ -167,44 +167,48 @@ fi
                 }
             }
             steps {
-                sh '''#!/usr/bin/env bash
+                                sh '''#!/usr/bin/env bash
 set -euo pipefail
 
-if echo "${params.LOCAL_REGISTRY}" | grep -Eiq '(^|[.:])svc\.cluster\.local(:[0-9]+)?$'; then
-    echo "ERROR: LOCAL_REGISTRY='${params.LOCAL_REGISTRY}' points to svc.cluster.local." >&2
-    echo "ERROR: CD deploy will fail image pulls from worker nodes." >&2
-    echo "ERROR: Use a node-reachable registry host/IP (example: 10.100.55.169:5000)." >&2
-    exit 2
-fi
+REGISTRY="${LOCAL_REGISTRY:-}"
+
+case "$REGISTRY" in
+    *.svc.cluster.local|*.svc.cluster.local:*)
+                echo "ERROR: LOCAL_REGISTRY='$REGISTRY' points to svc.cluster.local." >&2
+        echo "ERROR: CD deploy will fail image pulls from worker nodes." >&2
+        echo "ERROR: Use a node-reachable registry host/IP (example: 10.100.55.169:5000)." >&2
+        exit 2
+        ;;
+esac
 '''
                 deleteDir()
                 unstash 'source'
                 container('kaniko') {
-                    sh """#!/busybox/sh
+                                        sh '''#!/busybox/sh
 set -eu
 
-echo "Kaniko PID1: \$(tr '\\0' ' ' </proc/1/cmdline)"
+echo "Kaniko PID1: $(tr '\0' ' ' </proc/1/cmdline)"
 
 echo Building backend image with Kaniko
 /kaniko/executor \
-  --context \"${WORKSPACE}/backend\" \
-  --dockerfile \"${WORKSPACE}/backend/Dockerfile\" \
-  --destination \"${params.LOCAL_REGISTRY}/${env.BACKEND_IMAGE}:${BUILD_NUMBER}\" \
-  --destination \"${params.LOCAL_REGISTRY}/${env.BACKEND_IMAGE}:latest\" \
+    --context "$WORKSPACE/backend" \
+    --dockerfile "$WORKSPACE/backend/Dockerfile" \
+    --destination "$LOCAL_REGISTRY/$BACKEND_IMAGE:$BUILD_NUMBER" \
+    --destination "$LOCAL_REGISTRY/$BACKEND_IMAGE:latest" \
   --insecure \
   --skip-tls-verify \
   --insecure-pull
 
 echo Building frontend image with Kaniko
 /kaniko/executor \
-  --context \"${WORKSPACE}/frontend\" \
-  --dockerfile \"${WORKSPACE}/frontend/Dockerfile\" \
-  --destination \"${params.LOCAL_REGISTRY}/${env.FRONTEND_IMAGE}:${BUILD_NUMBER}\" \
-  --destination \"${params.LOCAL_REGISTRY}/${env.FRONTEND_IMAGE}:latest\" \
+    --context "$WORKSPACE/frontend" \
+    --dockerfile "$WORKSPACE/frontend/Dockerfile" \
+    --destination "$LOCAL_REGISTRY/$FRONTEND_IMAGE:$BUILD_NUMBER" \
+    --destination "$LOCAL_REGISTRY/$FRONTEND_IMAGE:latest" \
   --insecure \
   --skip-tls-verify \
   --insecure-pull
-"""
+'''
                 }
             }
         }

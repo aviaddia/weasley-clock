@@ -65,71 +65,73 @@ pipeline {
         // Configure cluster access either via in-cluster service account or kubeconfig from AWS CLI.
         stage('Configure kubectl') {
             steps {
-                sh """#!/usr/bin/env bash
+                                sh '''#!/usr/bin/env bash
 set -euo pipefail
 export AWS_PAGER=""
 
-if [ "${params.USE_IN_CLUSTER_AUTH ?: true}" = "true" ]; then
+if [ "${USE_IN_CLUSTER_AUTH:-true}" = "true" ]; then
     echo "Using in-cluster Kubernetes service account authentication."
     kubectl cluster-info
     exit 0
 fi
 
 aws eks update-kubeconfig \
-  --region ${params.AWS_REGION} \
-  --name ${params.EKS_CLUSTER_NAME} \
-  --kubeconfig \$WORKSPACE/.kube/config
+    --region "$AWS_REGION" \
+    --name "$EKS_CLUSTER_NAME" \
+    --kubeconfig "$WORKSPACE/.kube/config"
 
-export KUBECONFIG=\$WORKSPACE/.kube/config
+export KUBECONFIG="$WORKSPACE/.kube/config"
 kubectl cluster-info
-"""
+'''
             }
         }
 
         // Precheck namespace assumptions. Actual namespace creation is intentionally skipped for RBAC safety.
         stage('Namespace Precheck') {
             steps {
-                sh """#!/usr/bin/env bash
+                sh '''#!/usr/bin/env bash
 set -euo pipefail
 echo "Skipping namespace create/get to avoid cluster-scope RBAC checks."
-echo "Deploying into namespace: ${params.K8S_NAMESPACE}"
+echo "Deploying into namespace: $K8S_NAMESPACE"
 echo "If this namespace does not exist, pre-create it once with admin credentials."
-"""
+'''
             }
         }
 
         stage('Registry Preflight') {
             steps {
-                sh """#!/usr/bin/env bash
+                sh '''#!/usr/bin/env bash
 set -euo pipefail
 
-REGISTRY="${params.IMAGE_REGISTRY}"
+REGISTRY="${IMAGE_REGISTRY:-}"
 
-if echo "\$REGISTRY" | grep -Eiq '(^|[.:])svc[.]cluster[.]local(:[0-9]+)?$'; then
-  echo "ERROR: IMAGE_REGISTRY='\$REGISTRY' is a Kubernetes service DNS name." >&2
-  echo "ERROR: Worker nodes may fail to resolve svc.cluster.local during image pull." >&2
-  echo "ERROR: Use a node-reachable registry host/IP (example: 10.100.55.169:5000)." >&2
-  exit 2
-fi
+case "$REGISTRY" in
+    *.svc.cluster.local|*.svc.cluster.local:*)
+        echo "ERROR: IMAGE_REGISTRY='$REGISTRY' is a Kubernetes service DNS name." >&2
+        echo "ERROR: Worker nodes may fail to resolve svc.cluster.local during image pull." >&2
+        echo "ERROR: Use a node-reachable registry host/IP (example: 10.100.55.169:5000)." >&2
+        exit 2
+        ;;
+esac
 
-echo "Registry preflight passed: \$REGISTRY"
-"""
+echo "Registry preflight passed: $REGISTRY"
+'''
             }
         }
 
                 // Deploy or upgrade the release with explicit image/chart overrides.
         stage('Deploy with Helm') {
             steps {
-                sh """#!/usr/bin/env bash
+                                sh '''#!/usr/bin/env bash
 set -euo pipefail
-if [ "${params.USE_IN_CLUSTER_AUTH ?: true}" != "true" ]; then
-    export KUBECONFIG=\$WORKSPACE/.kube/config
+if [ "${USE_IN_CLUSTER_AUTH:-true}" != "true" ]; then
+        export KUBECONFIG="$WORKSPACE/.kube/config"
 fi
 
-helm upgrade --install ${params.RELEASE_NAME} ./helm \
-  --namespace ${params.K8S_NAMESPACE} \
-  --set imageRegistry=${params.IMAGE_REGISTRY} \
-  --set imageTag=${params.IMAGE_TAG} \
+helm upgrade --install "$RELEASE_NAME" ./helm \
+    --namespace "$K8S_NAMESPACE" \
+    --set-string imageRegistry="$IMAGE_REGISTRY" \
+    --set-string imageTag="$IMAGE_TAG" \
   --set backend.image=weasley-clock-backend \
     --set backend.persistence.enabled=false \
   --set frontend.image=weasley-clock-frontend \
@@ -140,47 +142,47 @@ helm upgrade --install ${params.RELEASE_NAME} ./helm \
     --timeout 10m
 
 echo "Helm release status:"
-helm status ${params.RELEASE_NAME} --namespace ${params.K8S_NAMESPACE}
-"""
+helm status "$RELEASE_NAME" --namespace "$K8S_NAMESPACE"
+'''
             }
         }
 
                 // Validate workload health and print key runtime endpoints/details.
         stage('Verify Deployment') {
             steps {
-                sh """#!/usr/bin/env bash
+                                sh '''#!/usr/bin/env bash
 set -euo pipefail
-if [ "${params.USE_IN_CLUSTER_AUTH ?: true}" != "true" ]; then
-    export KUBECONFIG=\$WORKSPACE/.kube/config
+if [ "${USE_IN_CLUSTER_AUTH:-true}" != "true" ]; then
+        export KUBECONFIG="$WORKSPACE/.kube/config"
 fi
-NS="${params.K8S_NAMESPACE}"
+NS="$K8S_NAMESPACE"
 
 echo "=== Pods ==="
-kubectl get pods -n \$NS -l app.kubernetes.io/instance=${params.RELEASE_NAME}
+kubectl get pods -n "$NS" -l "app.kubernetes.io/instance=$RELEASE_NAME"
 
 echo "=== Services ==="
-kubectl get svc -n \$NS -l app.kubernetes.io/instance=${params.RELEASE_NAME}
+kubectl get svc -n "$NS" -l "app.kubernetes.io/instance=$RELEASE_NAME"
 
 echo "=== Waiting for frontend LoadBalancer address ==="
-for i in \$(seq 1 30); do
-  LB=\$(kubectl get svc ${params.RELEASE_NAME}-frontend -n \$NS \
+for i in $(seq 1 30); do
+    LB=$(kubectl get svc "${RELEASE_NAME}-frontend" -n "$NS" \
     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
-  if [ -n "\$LB" ]; then
-    echo "Frontend accessible at: http://\$LB"
+    if [ -n "$LB" ]; then
+        echo "Frontend accessible at: http://$LB"
     break
   fi
-  echo "Waiting for LoadBalancer... (\$i/30)"
+    echo "Waiting for LoadBalancer... ($i/30)"
   sleep 10
 done
 
-if [ -z "\${LB:-}" ]; then
-  echo "WARNING: LoadBalancer address not yet available. Check 'kubectl get svc -n \$NS' later."
+if [ -z "${LB:-}" ]; then
+    echo "WARNING: LoadBalancer address not yet available. Check 'kubectl get svc -n $NS' later."
 fi
 
 echo "=== Rollout status ==="
-kubectl rollout status deployment/${params.RELEASE_NAME}-backend  -n \$NS --timeout=120s
-kubectl rollout status deployment/${params.RELEASE_NAME}-frontend -n \$NS --timeout=120s
-"""
+kubectl rollout status deployment/"$RELEASE_NAME"-backend  -n "$NS" --timeout=120s
+kubectl rollout status deployment/"$RELEASE_NAME"-frontend -n "$NS" --timeout=120s
+'''
             }
         }
     }
@@ -193,44 +195,44 @@ kubectl rollout status deployment/${params.RELEASE_NAME}-frontend -n \$NS --time
         unsuccessful {
                         // On failure, try to recover by rolling back to the previous Helm revision.
                         // This is best-effort and safely exits when no prior revision exists.
-                        sh """#!/usr/bin/env bash
+                        sh '''#!/usr/bin/env bash
 set -euo pipefail
 
-if [ "${params.AUTO_ROLLBACK_ON_FAILURE}" != "true" ]; then
+if [ "${AUTO_ROLLBACK_ON_FAILURE:-true}" != "true" ]; then
     echo "Auto rollback is disabled; skipping Helm rollback."
     exit 0
 fi
 
-if [ "${params.USE_IN_CLUSTER_AUTH ?: true}" != "true" ]; then
-    export KUBECONFIG=\$WORKSPACE/.kube/config
+if [ "${USE_IN_CLUSTER_AUTH:-true}" != "true" ]; then
+    export KUBECONFIG="$WORKSPACE/.kube/config"
 fi
 
-NS="${params.K8S_NAMESPACE}"
-RELEASE="${params.RELEASE_NAME}"
+NS="$K8S_NAMESPACE"
+RELEASE="$RELEASE_NAME"
 
-echo "Deployment failed. Attempting rollback for release '\$RELEASE' in namespace '\$NS'."
+echo "Deployment failed. Attempting rollback for release '$RELEASE' in namespace '$NS'."
 
-if ! helm history "\$RELEASE" --namespace "\$NS" >/dev/null 2>&1; then
-    echo "No Helm history found for '\$RELEASE'; skipping rollback."
+if ! helm history "$RELEASE" --namespace "$NS" >/dev/null 2>&1; then
+    echo "No Helm history found for '$RELEASE'; skipping rollback."
     exit 0
 fi
 
 echo "Recent Helm history:"
-helm history "\$RELEASE" --namespace "\$NS" --max 5
+helm history "$RELEASE" --namespace "$NS" --max 5
 
-PREVIOUS_REVISION=\$(helm history "\$RELEASE" --namespace "\$NS" --max 2 | awk 'NR==3 {print \$1}')
+PREVIOUS_REVISION=$(helm history "$RELEASE" --namespace "$NS" --max 2 | awk 'NR==3 {print $1}')
 
-if [ -z "\${PREVIOUS_REVISION:-}" ]; then
+if [ -z "${PREVIOUS_REVISION:-}" ]; then
     echo "No previous revision found; nothing to roll back to."
     exit 0
 fi
 
-echo "Rolling back '\$RELEASE' to revision \$PREVIOUS_REVISION ..."
-helm rollback "\$RELEASE" "\$PREVIOUS_REVISION" --namespace "\$NS" --wait --timeout 10m
+echo "Rolling back '$RELEASE' to revision $PREVIOUS_REVISION ..."
+helm rollback "$RELEASE" "$PREVIOUS_REVISION" --namespace "$NS" --wait --timeout 10m
 
 echo "Rollback completed. Current release status:"
-helm status "\$RELEASE" --namespace "\$NS"
-"""
+helm status "$RELEASE" --namespace "$NS"
+'''
                         echo "Deployment failed. Rolled back when possible; check logs for details."
         }
     }
