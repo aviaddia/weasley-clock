@@ -2,9 +2,11 @@ pipeline {
     agent { label 'eks-deployer' }
 
     options {
+        // Keep deploys serialized to avoid Helm/K8s race conditions.
         disableConcurrentBuilds()
         timeout(time: 30, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '20'))
+        // Checkout is done explicitly in the first stage.
         skipDefaultCheckout(true)
     }
 
@@ -40,6 +42,11 @@ pipeline {
             description: 'Helm release name'
         )
         booleanParam(
+            name: 'AUTO_ROLLBACK_ON_FAILURE',
+            defaultValue: true,
+            description: 'If enabled, automatically roll back Helm release to the previous revision on failed deployment.'
+        )
+        booleanParam(
             name: 'USE_IN_CLUSTER_AUTH',
             defaultValue: true,
             description: 'Use Kubernetes service account auth from the deploy pod instead of aws eks update-kubeconfig.'
@@ -47,6 +54,7 @@ pipeline {
     }
 
     stages {
+        // Fetch the exact deployment source for this run.
         stage('Checkout') {
             steps {
                 deleteDir()
@@ -54,6 +62,7 @@ pipeline {
             }
         }
 
+        // Configure cluster access either via in-cluster service account or kubeconfig from AWS CLI.
         stage('Configure kubectl') {
             steps {
                 sh """#!/usr/bin/env bash
@@ -77,6 +86,7 @@ kubectl cluster-info
             }
         }
 
+        // Precheck namespace assumptions. Actual namespace creation is intentionally skipped for RBAC safety.
         stage('Namespace Precheck') {
             steps {
                 sh """#!/usr/bin/env bash
@@ -88,11 +98,14 @@ echo "If this namespace does not exist, pre-create it once with admin credential
             }
         }
 
+                // Deploy or upgrade the release with explicit image/chart overrides.
         stage('Deploy with Helm') {
             steps {
                 sh """#!/usr/bin/env bash
 set -euo pipefail
-export KUBECONFIG=\$WORKSPACE/.kube/config
+if [ "${params.USE_IN_CLUSTER_AUTH ?: true}" != "true" ]; then
+    export KUBECONFIG=\$WORKSPACE/.kube/config
+fi
 
 helm upgrade --install ${params.RELEASE_NAME} ./helm \
   --namespace ${params.K8S_NAMESPACE} \
@@ -113,11 +126,14 @@ helm status ${params.RELEASE_NAME} --namespace ${params.K8S_NAMESPACE}
             }
         }
 
+                // Validate workload health and print key runtime endpoints/details.
         stage('Verify Deployment') {
             steps {
                 sh """#!/usr/bin/env bash
 set -euo pipefail
-export KUBECONFIG=\$WORKSPACE/.kube/config
+if [ "${params.USE_IN_CLUSTER_AUTH ?: true}" != "true" ]; then
+    export KUBECONFIG=\$WORKSPACE/.kube/config
+fi
 NS="${params.K8S_NAMESPACE}"
 
 echo "=== Pods ==="
@@ -152,10 +168,51 @@ kubectl rollout status deployment/${params.RELEASE_NAME}-frontend -n \$NS --time
 
     post {
         success {
+                        // Final success summary for deployment jobs and downstream automation.
             echo "Deployment of weasley-clock completed successfully."
         }
         unsuccessful {
-            echo "Deployment failed. Check the stage output for details."
+                        // On failure, try to recover by rolling back to the previous Helm revision.
+                        // This is best-effort and safely exits when no prior revision exists.
+                        sh """#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${params.AUTO_ROLLBACK_ON_FAILURE}" != "true" ]; then
+    echo "Auto rollback is disabled; skipping Helm rollback."
+    exit 0
+fi
+
+if [ "${params.USE_IN_CLUSTER_AUTH ?: true}" != "true" ]; then
+    export KUBECONFIG=\$WORKSPACE/.kube/config
+fi
+
+NS="${params.K8S_NAMESPACE}"
+RELEASE="${params.RELEASE_NAME}"
+
+echo "Deployment failed. Attempting rollback for release '\$RELEASE' in namespace '\$NS'."
+
+if ! helm history "\$RELEASE" --namespace "\$NS" >/dev/null 2>&1; then
+    echo "No Helm history found for '\$RELEASE'; skipping rollback."
+    exit 0
+fi
+
+echo "Recent Helm history:"
+helm history "\$RELEASE" --namespace "\$NS" --max 5
+
+PREVIOUS_REVISION=\$(helm history "\$RELEASE" --namespace "\$NS" --max 2 | awk 'NR==3 {print \$1}')
+
+if [ -z "\${PREVIOUS_REVISION:-}" ]; then
+    echo "No previous revision found; nothing to roll back to."
+    exit 0
+fi
+
+echo "Rolling back '\$RELEASE' to revision \$PREVIOUS_REVISION ..."
+helm rollback "\$RELEASE" "\$PREVIOUS_REVISION" --namespace "\$NS" --wait --timeout 5m
+
+echo "Rollback completed. Current release status:"
+helm status "\$RELEASE" --namespace "\$NS"
+"""
+                        echo "Deployment failed. Rolled back when possible; check logs for details."
         }
     }
 }

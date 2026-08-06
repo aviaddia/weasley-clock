@@ -57,18 +57,31 @@ spec:
             - name: data
               mountPath: {{ .Values.backend.persistence.mountPath }}
           {{- end }}
+          {{- if .Values.backend.probes.enabled }}
           livenessProbe:
             httpGet:
-              path: /health
+              path: {{ .Values.backend.probes.liveness.path }}
               port: {{ .Values.backend.port }}
-            initialDelaySeconds: 10
-            periodSeconds: 20
+            initialDelaySeconds: {{ .Values.backend.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.backend.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.backend.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.backend.probes.liveness.failureThreshold }}
           readinessProbe:
             httpGet:
-              path: /health
+              path: {{ .Values.backend.probes.readiness.path }}
               port: {{ .Values.backend.port }}
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            initialDelaySeconds: {{ .Values.backend.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.backend.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.backend.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.backend.probes.readiness.failureThreshold }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.backend.probes.startup.path }}
+              port: {{ .Values.backend.port }}
+            periodSeconds: {{ .Values.backend.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.backend.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.backend.probes.startup.failureThreshold }}
+          {{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
       {{- if .Values.backend.persistence.enabled }}

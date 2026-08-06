@@ -21,6 +21,26 @@ backend:
       cpu: "500m"
       memory: "256Mi"
 
+  probes:
+    enabled: true
+    liveness:
+      path: /health/live
+      initialDelaySeconds: 10
+      periodSeconds: 20
+      timeoutSeconds: 2
+      failureThreshold: 3
+    readiness:
+      path: /health/ready
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 2
+      failureThreshold: 3
+    startup:
+      path: /health/startup
+      periodSeconds: 5
+      timeoutSeconds: 2
+      failureThreshold: 30
+
   # Persistent data volume (people.json + uploaded images)
   persistence:
     enabled: true
