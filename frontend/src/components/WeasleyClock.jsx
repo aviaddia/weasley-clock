@@ -10,17 +10,19 @@ const HAND_LENGTH = 165;  // distance from centre to avatar
 const AVATAR_R = 22;      // avatar circle radius
 const CENTRE_R = 12;      // centre boss
 
-// 8 locations evenly spaced, starting at top (−90°) going clockwise
-export const LOCATIONS = [
-  'Home',
-  'Work',
-  'School',
-  'Hospital',
-  'Traveling',
-  'Lost',
-  'Mortal Peril',
-  'Prison',
+// 8 fixed clock slots, starting at top and going clockwise.
+export const DEFAULT_CLOCK_LOCATIONS = [
+  { id: 'home', name: 'Home', coordinates: null },
+  { id: 'work', name: 'Work', coordinates: null },
+  { id: 'school', name: 'School', coordinates: null },
+  { id: 'hospital', name: 'Hospital', coordinates: null },
+  { id: 'traveling', name: 'Traveling', coordinates: null },
+  { id: 'lost', name: 'Lost', coordinates: null },
+  { id: 'mortal-peril', name: 'Mortal Peril', coordinates: null },
+  { id: 'prison', name: 'Prison', coordinates: null },
 ];
+
+export const LOCATIONS = DEFAULT_CLOCK_LOCATIONS.map((slot) => slot.name);
 
 function deg2rad(deg) {
   return (deg * Math.PI) / 180;
@@ -31,24 +33,44 @@ function polarToXY(angleDeg, radius) {
   return { x: CX + radius * Math.cos(r), y: CY + radius * Math.sin(r) };
 }
 
-// Pre-compute each location's angle and XY
-const locationMeta = LOCATIONS.map((name, i) => {
-  const angle = -90 + i * 45; // evenly distribute 8 positions
-  const labelPt = polarToXY(angle, LABEL_R);
-  const tickOuter = polarToXY(angle, FACE_R - 6);
-  const tickInner = polarToXY(angle, FACE_R - 22);
-  return { name, angle, labelPt, tickOuter, tickInner };
-});
+function normalizeKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-');
+}
 
-function locationAngle(locationName) {
-  const idx = LOCATIONS.findIndex(
-    (l) => l.toLowerCase() === (locationName || '').toLowerCase()
+function buildClockLocations(clockLocations) {
+  if (!Array.isArray(clockLocations) || clockLocations.length === 0) {
+    return DEFAULT_CLOCK_LOCATIONS;
+  }
+
+  const byId = new Map(clockLocations.map((slot) => [slot.id, slot]));
+  return DEFAULT_CLOCK_LOCATIONS.map((fallback) => {
+    const incoming = byId.get(fallback.id);
+    if (!incoming) return fallback;
+
+    const name = String(incoming.name || '').trim() || fallback.name;
+    const coordinates = incoming.coordinates || null;
+    return { ...fallback, name, coordinates };
+  });
+}
+
+function locationAngle(locationName, locationId, clockLocations) {
+  let idx = clockLocations.findIndex((slot) => slot.id === locationId);
+  if (idx !== -1) {
+    return -90 + idx * 45;
+  }
+
+  const wanted = normalizeKey(locationName);
+  idx = clockLocations.findIndex(
+    (slot) => normalizeKey(slot.name) === wanted || normalizeKey(slot.id) === wanted
   );
   return idx === -1 ? -90 : -90 + idx * 45; // default to Home if unknown
 }
 
 // Decorative clock-hand path (tapered)
-function HandPath({ angleDeg, length, color, personId }) {
+function HandPath({ angleDeg, length }) {
   const rad = deg2rad(angleDeg);
   const tip = { x: CX + length * Math.cos(rad), y: CY + length * Math.sin(rad) };
 
@@ -70,29 +92,25 @@ function HandPath({ angleDeg, length, color, personId }) {
   return (
     <path
       d={d}
-      fill={color}
-      stroke="#1a0800"
-      strokeWidth="1"
-      opacity="0.92"
+      fill="url(#handMetalGrad)"
+      stroke="#2f261d"
+      strokeWidth="1.2"
+      opacity="0.96"
       style={{ transition: 'all 1.2s ease-in-out' }}
     />
   );
 }
 
-function PersonHand({ person, locationName, colorIndex }) {
-  const colors = [
-    '#C0392B', '#2980B9', '#27AE60', '#8E44AD',
-    '#D35400', '#16A085', '#2C3E50', '#F39C12',
-  ];
-  const color = colors[colorIndex % colors.length];
-  const angle = locationAngle(locationName);
+function PersonHand({ person, locationName, locationId, clockLocations }) {
+  const fallbackAvatarFill = '#6c5b47';
+  const angle = locationAngle(locationName, locationId, clockLocations);
   const avatarPt = polarToXY(angle, HAND_LENGTH);
   const clipId = `clip-${person.id}`;
   const patternId = `pat-${person.id}`;
 
   return (
     <g style={{ transition: 'all 1.2s ease-in-out' }}>
-      <HandPath angleDeg={angle} length={HAND_LENGTH - AVATAR_R} color={color} />
+      <HandPath angleDeg={angle} length={HAND_LENGTH - AVATAR_R} />
 
       {/* Avatar circle */}
       <defs>
@@ -124,7 +142,7 @@ function PersonHand({ person, locationName, colorIndex }) {
         cx={avatarPt.x}
         cy={avatarPt.y}
         r={AVATAR_R}
-        fill={person.imageUrl ? `url(#${patternId})` : color}
+        fill={person.imageUrl ? `url(#${patternId})` : fallbackAvatarFill}
         stroke="#D4AF37"
         strokeWidth="2.5"
         clipPath={`url(#${clipId})`}
@@ -151,7 +169,24 @@ function PersonHand({ person, locationName, colorIndex }) {
   );
 }
 
-export default function WeasleyClock({ locations = [] }) {
+export default function WeasleyClock({ locations = [], clockLocations = DEFAULT_CLOCK_LOCATIONS }) {
+  const activeClockLocations = React.useMemo(
+    () => buildClockLocations(clockLocations),
+    [clockLocations]
+  );
+
+  const locationMeta = React.useMemo(
+    () =>
+      activeClockLocations.map((slot, i) => {
+        const angle = -90 + i * 45; // evenly distribute 8 positions
+        const labelPt = polarToXY(angle, LABEL_R);
+        const tickOuter = polarToXY(angle, FACE_R - 6);
+        const tickInner = polarToXY(angle, FACE_R - 22);
+        return { ...slot, angle, labelPt, tickOuter, tickInner };
+      }),
+    [activeClockLocations]
+  );
+
   return (
     <div className="clock-wrapper">
       <svg
@@ -187,6 +222,14 @@ export default function WeasleyClock({ locations = [] }) {
           <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
             <feDropShadow dx="3" dy="6" stdDeviation="8" floodColor="#000" floodOpacity="0.5" />
           </filter>
+
+          {/* Aged metal look for clock hands */}
+          <linearGradient id="handMetalGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#4b3f33" />
+            <stop offset="35%" stopColor="#7f6f5a" />
+            <stop offset="65%" stopColor="#988469" />
+            <stop offset="100%" stopColor="#4a3c30" />
+          </linearGradient>
         </defs>
 
         {/* ── Outer decorative ring ── */}
@@ -206,13 +249,17 @@ export default function WeasleyClock({ locations = [] }) {
         <circle cx={CX} cy={CY} r={FACE_R} fill="none" stroke="#8B6914" strokeWidth="3" />
 
         {/* ── Location tick marks & labels ── */}
-        {locationMeta.map(({ name, labelPt, tickOuter, tickInner, angle }) => {
+        {locationMeta.map(({ id, name, labelPt, tickOuter, tickInner, angle }) => {
           // Shift labels outward slightly to avoid overlap
           const shift = polarToXY(angle, LABEL_R - 20);
-          const isMortalPeril = name === 'Mortal Peril';
+          const isMortalPeril = id === 'mortal-peril';
+          const baseRotation = angle + 90;
+          const normalizedRotation = ((baseRotation % 360) + 360) % 360;
+          const shouldFlip = normalizedRotation > 90 && normalizedRotation < 270;
+          const textRotation = shouldFlip ? baseRotation + 180 : baseRotation;
 
           return (
-            <g key={name}>
+            <g key={id}>
               {/* Tick line */}
               <line
                 x1={tickInner.x} y1={tickInner.y}
@@ -230,7 +277,7 @@ export default function WeasleyClock({ locations = [] }) {
                 fontSize={isMortalPeril ? '9.5' : '10.5'}
                 fontWeight={isMortalPeril ? 'bold' : 'normal'}
                 fill={isMortalPeril ? '#8B0000' : '#3b2200'}
-                transform={`rotate(${angle + 90}, ${shift.x}, ${shift.y})`}
+                transform={`rotate(${textRotation}, ${shift.x}, ${shift.y})`}
               >
                 {name}
               </text>
@@ -247,7 +294,8 @@ export default function WeasleyClock({ locations = [] }) {
             key={loc.id || idx}
             person={{ id: loc.id, name: loc.name, imageUrl: loc.imageUrl }}
             locationName={loc.location}
-            colorIndex={idx}
+            locationId={loc.locationId}
+            clockLocations={activeClockLocations}
           />
         ))}
 

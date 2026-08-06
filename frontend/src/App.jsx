@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import WeasleyClock from './components/WeasleyClock';
 import AddPersonModal from './components/AddPersonModal';
+import EditLocationsModal from './components/EditLocationsModal';
 
 const REFRESH_INTERVAL = 30_000; // 30 s
 
 export default function App() {
   const [locations, setLocations] = useState([]);
+  const [clockLocations, setClockLocations] = useState([]);
   const [people, setPeople] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  const [showLocationsModal, setShowLocationsModal] = useState(false);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
@@ -34,12 +37,23 @@ export default function App() {
     }
   }, []);
 
+  const fetchClockLocations = useCallback(async () => {
+    try {
+      const res = await fetch('/api/clock-locations');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setClockLocations(await res.json());
+    } catch (e) {
+      setError(`Could not fetch clock locations: ${e.message}`);
+    }
+  }, []);
+
   useEffect(() => {
     fetchPeople();
     fetchLocations();
+    fetchClockLocations();
     const timer = setInterval(fetchLocations, REFRESH_INTERVAL);
     return () => clearInterval(timer);
-  }, [fetchPeople, fetchLocations]);
+  }, [fetchPeople, fetchLocations, fetchClockLocations]);
 
   async function handleAddPerson(formData) {
     const res = await fetch('/api/people', { method: 'POST', body: formData });
@@ -57,6 +71,27 @@ export default function App() {
     await fetchLocations();
   }
 
+  async function handleSaveClockLocations(updated) {
+    const responses = await Promise.all(
+      updated.map((slot) =>
+        fetch(`/api/clock-locations/${slot.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: slot.name, coordinates: slot.coordinates }),
+        })
+      )
+    );
+
+    const failed = responses.find((r) => !r.ok);
+    if (failed) {
+      const body = await failed.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${failed.status}`);
+    }
+
+    await fetchClockLocations();
+    await fetchLocations();
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -65,14 +100,22 @@ export default function App() {
       </header>
 
       <main className="app-main">
-        <WeasleyClock locations={locations} />
+        <WeasleyClock locations={locations} clockLocations={clockLocations} />
 
         <aside className="sidebar">
           <div className="sidebar-header">
             <h2>Family Members</h2>
-            <button className="btn-add" onClick={() => setShowModal(true)}>
-              + Add Person
-            </button>
+            <div className="sidebar-actions">
+              <button className="btn-add" onClick={() => setShowModal(true)}>
+                + Add Person
+              </button>
+              <button
+                className="btn-add btn-add-secondary"
+                onClick={() => setShowLocationsModal(true)}
+              >
+                Edit Locations
+              </button>
+            </div>
           </div>
 
           {error && <div className="error-banner">{error}</div>}
@@ -120,6 +163,14 @@ export default function App() {
         <AddPersonModal
           onClose={() => setShowModal(false)}
           onSubmit={handleAddPerson}
+        />
+      )}
+
+      {showLocationsModal && (
+        <EditLocationsModal
+          locations={clockLocations}
+          onClose={() => setShowLocationsModal(false)}
+          onSave={handleSaveClockLocations}
         />
       )}
     </div>

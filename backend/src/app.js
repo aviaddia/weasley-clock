@@ -28,6 +28,7 @@ initializeBackend().catch((error) => {
 // Routes
 app.use('/api/people', require('./routes/people'));
 app.use('/api/locations', require('./routes/locations'));
+app.use('/api/clock-locations', require('./routes/clockLocations'));
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', startupComplete }));

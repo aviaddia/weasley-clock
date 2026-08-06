@@ -10,17 +10,9 @@
  * useful for local dev and demos.
  */
 const axios = require('axios');
+const { DEFAULT_CLOCK_LOCATIONS } = require('./clockLocationService');
 
-const LOCATIONS = [
-  'Home',
-  'Work',
-  'School',
-  'Hospital',
-  'Traveling',
-  'Lost',
-  'Mortal Peril',
-  'Prison',
-];
+const LOCATIONS = DEFAULT_CLOCK_LOCATIONS.map((slot) => slot.name);
 
 /**
  * Returns { location: string, reachable: boolean, coordinates: {lat,lng}|null }
@@ -56,6 +48,7 @@ async function getPhoneLocation(phone) {
 function normalizeResponse(data) {
   return {
     location: data.location || data.status || 'Traveling',
+    locationId: data.locationId || null,
     reachable: data.reachable !== false,
     coordinates: data.lat && data.lng ? { lat: data.lat, lng: data.lng } : null,
   };
@@ -70,8 +63,10 @@ function mockLocation(phone) {
     .replace(/\D/g, '')
     .split('')
     .reduce((acc, ch) => acc + Number(ch), 0);
+  const slot = DEFAULT_CLOCK_LOCATIONS[hash % DEFAULT_CLOCK_LOCATIONS.length];
   return {
-    location: LOCATIONS[hash % LOCATIONS.length],
+    location: slot.name,
+    locationId: slot.id,
     reachable: true,
     coordinates: null,
     mock: true,

@@ -167,6 +167,16 @@ fi
                 }
             }
             steps {
+                sh '''#!/usr/bin/env bash
+set -euo pipefail
+
+if echo "${params.LOCAL_REGISTRY}" | grep -Eiq '(^|[.:])svc\.cluster\.local(:[0-9]+)?$'; then
+    echo "ERROR: LOCAL_REGISTRY='${params.LOCAL_REGISTRY}' points to svc.cluster.local." >&2
+    echo "ERROR: CD deploy will fail image pulls from worker nodes." >&2
+    echo "ERROR: Use a node-reachable registry host/IP (example: 10.100.55.169:5000)." >&2
+    exit 2
+fi
+'''
                 deleteDir()
                 unstash 'source'
                 container('kaniko') {
