@@ -60,8 +60,8 @@ pipeline {
                         deleteDir()
                         unstash 'source'
                         dir('backend') {
-                            sh '''#!/usr/bin/env bash
-set -euo pipefail
+                            sh '''#!/bin/sh
+set -eu
 if [ -f package-lock.json ]; then
     npm ci
 else
@@ -103,8 +103,8 @@ fi
                         deleteDir()
                         unstash 'source'
                         dir('frontend') {
-                            sh '''#!/usr/bin/env bash
-set -euo pipefail
+                            sh '''#!/bin/sh
+set -eu
 if [ -f package-lock.json ]; then
     npm ci
 else
@@ -167,8 +167,8 @@ fi
                 }
             }
             steps {
-                                sh '''#!/usr/bin/env bash
-set -euo pipefail
+                                sh '''#!/bin/sh
+set -eu
 
 REGISTRY="${LOCAL_REGISTRY:-}"
 
@@ -184,7 +184,7 @@ esac
                 deleteDir()
                 unstash 'source'
                 container('kaniko') {
-                                        sh '''#!/busybox/sh
+                                        sh '''#!/bin/sh
 set -eu
 
 echo "Kaniko container is ready"

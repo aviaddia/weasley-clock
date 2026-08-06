@@ -65,8 +65,8 @@ pipeline {
         // Configure cluster access either via in-cluster service account or kubeconfig from AWS CLI.
         stage('Configure kubectl') {
             steps {
-                                sh '''#!/usr/bin/env bash
-set -euo pipefail
+                                sh '''#!/bin/sh
+set -eu
 export AWS_PAGER=""
 
 if [ "${USE_IN_CLUSTER_AUTH:-true}" = "true" ]; then
@@ -89,8 +89,8 @@ kubectl cluster-info
         // Precheck namespace assumptions. Actual namespace creation is intentionally skipped for RBAC safety.
         stage('Namespace Precheck') {
             steps {
-                sh '''#!/usr/bin/env bash
-set -euo pipefail
+                sh '''#!/bin/sh
+set -eu
 echo "Skipping namespace create/get to avoid cluster-scope RBAC checks."
 echo "Deploying into namespace: $K8S_NAMESPACE"
 echo "If this namespace does not exist, pre-create it once with admin credentials."
@@ -100,8 +100,8 @@ echo "If this namespace does not exist, pre-create it once with admin credential
 
         stage('Registry Preflight') {
             steps {
-                sh '''#!/usr/bin/env bash
-set -euo pipefail
+                sh '''#!/bin/sh
+set -eu
 
 REGISTRY="${IMAGE_REGISTRY:-}"
 
@@ -122,8 +122,8 @@ echo "Registry preflight passed: $REGISTRY"
                 // Deploy or upgrade the release with explicit image/chart overrides.
         stage('Deploy with Helm') {
             steps {
-                                sh '''#!/usr/bin/env bash
-set -euo pipefail
+                                sh '''#!/bin/sh
+set -eu
 if [ "${USE_IN_CLUSTER_AUTH:-true}" != "true" ]; then
         export KUBECONFIG="$WORKSPACE/.kube/config"
 fi
@@ -150,8 +150,8 @@ helm status "$RELEASE_NAME" --namespace "$K8S_NAMESPACE"
                 // Validate workload health and print key runtime endpoints/details.
         stage('Verify Deployment') {
             steps {
-                                sh '''#!/usr/bin/env bash
-set -euo pipefail
+                                sh '''#!/bin/sh
+set -eu
 if [ "${USE_IN_CLUSTER_AUTH:-true}" != "true" ]; then
         export KUBECONFIG="$WORKSPACE/.kube/config"
 fi
@@ -195,8 +195,8 @@ kubectl rollout status deployment/"$RELEASE_NAME"-frontend -n "$NS" --timeout=12
         unsuccessful {
                         // On failure, try to recover by rolling back to the previous Helm revision.
                         // This is best-effort and safely exits when no prior revision exists.
-                        sh '''#!/usr/bin/env bash
-set -euo pipefail
+                        sh '''#!/bin/sh
+set -eu
 
 if [ "${AUTO_ROLLBACK_ON_FAILURE:-true}" != "true" ]; then
     echo "Auto rollback is disabled; skipping Helm rollback."
