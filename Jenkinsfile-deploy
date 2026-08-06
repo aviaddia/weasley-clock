@@ -105,7 +105,7 @@ set -euo pipefail
 
 REGISTRY="${params.IMAGE_REGISTRY}"
 
-if echo "\$REGISTRY" | grep -Eiq '(^|[.:])svc\.cluster\.local(:[0-9]+)?$'; then
+if echo "\$REGISTRY" | grep -Eiq '(^|[.:])svc[.]cluster[.]local(:[0-9]+)?$'; then
   echo "ERROR: IMAGE_REGISTRY='\$REGISTRY' is a Kubernetes service DNS name." >&2
   echo "ERROR: Worker nodes may fail to resolve svc.cluster.local during image pull." >&2
   echo "ERROR: Use a node-reachable registry host/IP (example: 10.100.55.169:5000)." >&2
